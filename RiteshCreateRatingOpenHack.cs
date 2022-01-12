@@ -10,6 +10,8 @@ using Newtonsoft.Json;
 using System.Net.Http;
 using Microsoft.Azure.Cosmos;
 using System.Net;
+using System.Collections.Generic;
+using System.Linq;
 
 namespace Company.Function
 {
@@ -68,15 +70,15 @@ namespace Company.Function
                         rating = rating,
                         timeStamp = timestamp
                     };
-                
-                await AddItemsToContainerAsync (productRatings);
-                return new OkObjectResult(productRatings);
+
+                    await AddItemsToContainerAsync(productRatings);
+                    return new OkObjectResult(productRatings);
 
                 }
                 else
                 {
                     string errorMessage = "Invalid Product or user details";
-               return new BadRequestObjectResult(errorMessage);
+                    return new BadRequestObjectResult(errorMessage);
                 }
 
             }
@@ -84,7 +86,7 @@ namespace Company.Function
             else
             {
                 string errorMessage = "Ratings should be between 1 to 5";
-               return new BadRequestObjectResult(errorMessage);
+                return new BadRequestObjectResult(errorMessage);
             }
         }
 
@@ -132,7 +134,7 @@ namespace Company.Function
             {
                 // Read the item to see if it exists.  
                 ItemResponse<Models.Ratings> productDetailsValidate = await container.ReadItemAsync<Models.Ratings>(productDetails.id, new PartitionKey(productDetails.id));
-                
+
             }
             catch (CosmosException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
             {
@@ -140,5 +142,85 @@ namespace Company.Function
                 ItemResponse<Models.Ratings> productDetailsSaveResponse = await container.CreateItemAsync<Models.Ratings>(productDetails, new PartitionKey(productDetails.id));
             }
         }
+    
+        [FunctionName("GetRating")]
+        public static async Task<IActionResult> GetRating(
+            [HttpTrigger(AuthorizationLevel.Function, "get", "post", Route = null)] HttpRequest req,
+            ILogger log)
+        {
+            log.LogInformation("C# HTTP trigger function processed a request.");
+
+            string ratingId = req.Query["ratingId"];
+
+            if (ratingId is not null)
+            {
+                cosmosClient = new CosmosClient(EndpointUri, PrimaryKey);
+                database = await cosmosClient.CreateDatabaseIfNotExistsAsync(databaseId);
+                container = await database.CreateContainerIfNotExistsAsync(containerId, "/id");
+
+                var sqlQueryText = string.Format("SELECT * FROM ratings WHERE ratings.id = '{0}'", ratingId);
+
+                QueryDefinition queryDefinition = new QueryDefinition(sqlQueryText);
+                FeedIterator<Models.Ratings> queryResultSetIterator = container.GetItemQueryIterator<Models.Ratings>(queryDefinition);
+
+                List<Models.Ratings> rat = new List<Models.Ratings>();
+
+                while (queryResultSetIterator.HasMoreResults)
+                {
+                    FeedResponse<Models.Ratings> currentResultSet = await queryResultSetIterator.ReadNextAsync();
+                    foreach (Models.Ratings r in currentResultSet)
+                    {
+                        rat.Add(r);
+                    }
+                }
+                return new OkObjectResult(rat.First());
+            }
+            else
+            {
+                string errorMessage = "Invalid Product details";
+                return new BadRequestObjectResult(errorMessage);
+            }
+
+        }
+
+        [FunctionName("GetRatings")]
+        public static async Task<IActionResult> GetRatings(
+            [HttpTrigger(AuthorizationLevel.Function, "get", "post", Route = null)] HttpRequest req,
+            ILogger log)
+        {
+            string userId = req.Query["userId"];
+
+            if (userId is not null)
+            {
+                cosmosClient = new CosmosClient(EndpointUri, PrimaryKey);
+                database = await cosmosClient.CreateDatabaseIfNotExistsAsync(databaseId);
+                container = await database.CreateContainerIfNotExistsAsync(containerId, "/id");
+
+                var sqlQueryText = string.Format("SELECT * FROM ratings WHERE ratings.userId = '{0}'", userId);
+
+                QueryDefinition queryDefinition = new QueryDefinition(sqlQueryText);
+                FeedIterator<Models.Ratings> queryResultSetIterator = container.GetItemQueryIterator<Models.Ratings>(queryDefinition);
+
+                List<Models.Ratings> rat = new List<Models.Ratings>();
+
+                while (queryResultSetIterator.HasMoreResults)
+                {
+                    FeedResponse<Models.Ratings> currentResultSet = await queryResultSetIterator.ReadNextAsync();
+                    foreach (Models.Ratings r in currentResultSet)
+                    {
+                        rat.Add(r);
+                    }
+                }
+                return new OkObjectResult(rat);
+            }
+            else
+            {
+                string errorMessage = "Invalid Product details";
+                return new BadRequestObjectResult(errorMessage);
+            }
+
+        }
+
     }
+
 }
